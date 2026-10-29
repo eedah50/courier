@@ -1,11 +1,11 @@
-# Sekure Courier — Comprehensive System Documentation
+# Sekure Delivery — Comprehensive System Documentation
 **A Bolt Delivery, Couriers & Merchants Ecosystem Clone**
 
 ---
 
 ## 1. Executive Summary & Architecture
 
-**Sekure Courier** is a fully-featured, multi-sided delivery and logistics platform connecting **Customers / Users**, **Courier / Delivery Drivers**, and **Platform Owners / Admins**. 
+**Sekure Delivery** is a fully-featured, multi-sided delivery and logistics platform connecting **Customers / Users**, **Courier / Delivery Drivers**, and **Platform Owners / Admins**. 
 
 The application is built with a dual architecture:
 1. **Cross-Platform Mobile & Web Client (Flutter)**: Supports Android, iOS, and Web. Handles Customer Dashboards, Multi-Step Courier Onboarding & Verification, Driver Consoles, Health & Fitness Tracking, Sekure AI Copilot, Event Reminders, and a built-in Flutter Admin Control Tower.

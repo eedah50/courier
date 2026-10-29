@@ -3,10 +3,16 @@ import 'package:flutter/material.dart';
 import 'ai_assistant_screen.dart';
 import 'auth_screen.dart';
 import 'chat_screen.dart';
+import 'create_waybill_screen.dart';
 import 'event_reminder_screen.dart';
 import 'health_dashboard_screen.dart';
 import 'support_chat_screen.dart';
+import 'terms_privacy_screen.dart';
 import 'theme.dart';
+import 'live_tracking_screen.dart';
+import 'order_history_screen.dart';
+import 'wallet_screen.dart';
+import 'promo_referral_screen.dart';
 
 /// Dashboard colours. Change them here.
 class _C {
@@ -166,9 +172,16 @@ class _DashboardScreenState extends State<DashboardScreen>
       ));
   }
 
-  void _onNav(int i) {
+  void _onNav(int i) async {
     if (i == 2) {
-      _snack('Create waybill: connect this to your backend.');
+      final waybillId = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          builder: (_) => const CreateWaybillScreen(),
+        ),
+      );
+      if (waybillId != null) {
+        _snack('Waybill $waybillId created successfully!');
+      }
       return;
     }
     if ((i == 0 || i == 3 || i == 4) && _tab != i) _enter.forward(from: 0); // replay entrance
@@ -349,6 +362,65 @@ class _DashboardScreenState extends State<DashboardScreen>
                   Icon(Icons.arrow_forward_ios_rounded, color: Colors.white54, size: 16),
                 ],
               ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        st(
+          .59,
+          .93,
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFBEB),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _C.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Quick Logistics Hub', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: _C.ink)),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: _C.ink, foregroundColor: _C.lime, padding: const EdgeInsets.symmetric(vertical: 10)),
+                        onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OrderHistoryScreen())),
+                        child: const Text('History & Receipts', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: _C.lime, foregroundColor: _C.ink, padding: const EdgeInsets.symmetric(vertical: 10)),
+                        onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WalletScreen())),
+                        child: const Text('Wallet & Top-Up', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(foregroundColor: _C.ink, side: const BorderSide(color: _C.ink), padding: const EdgeInsets.symmetric(vertical: 10)),
+                        onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LiveTrackingScreen(waybillId: 'SKR-WAY-8842', courierName: 'Ibrahim Olatunji', courierPhone: '+234 803 445 9920', vehicleInfo: 'Honda Ace 125 • LAG-492-IKJ', rating: 4.9))),
+                        child: const Text('Live Tracking', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(foregroundColor: _C.ink, side: const BorderSide(color: _C.ink), padding: const EdgeInsets.symmetric(vertical: 10)),
+                        onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PromoReferralScreen())),
+                        child: const Text('Promos & Referrals', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -1373,6 +1445,18 @@ class _DashboardScreenState extends State<DashboardScreen>
                 );
               },
             ),
+            _SettingTile(
+              icon: Icons.gavel_rounded,
+              title: 'Terms & Privacy Policy',
+              subtitle: 'Legal agreement and privacy rules',
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const TermsPrivacyScreen(isCourierAgreement: false),
+                  ),
+                );
+              },
+            ),
           ]),
         ),
         const SizedBox(height: 24),
@@ -1382,7 +1466,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           .8,
           1,
           const Center(
-            child: Text('Sekure Courier app · Version 1.0.0',
+            child: Text('Sekure Delivery app · Version 1.0.0',
                 style: TextStyle(color: _C.muted, fontSize: 11)),
           ),
         ),

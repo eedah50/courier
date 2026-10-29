@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'role_selection_screen.dart';
+import 'terms_privacy_screen.dart';
 import 'theme.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -25,7 +25,7 @@ class _SplashScreenState extends State<SplashScreen>
       Navigator.of(context).pushReplacement(PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 700),
         pageBuilder: (context, animation, secondaryAnimation) =>
-            const RoleSelectionScreen(),
+            const TermsPrivacyScreen(isFirstTimeOnboarding: true),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             FadeTransition(opacity: animation, child: child),
       ));
@@ -78,7 +78,7 @@ class _SplashScreenState extends State<SplashScreen>
                             ),
                           ),
                           const Text(
-                            'COURIER',
+                            'DELIVERY',
                             style: TextStyle(
                               color: AppColors.orange,
                               fontSize: 22,
@@ -143,9 +143,11 @@ class _SplashScreenState extends State<SplashScreen>
 ///
 /// Timeline (t = 0..1):
 ///  0.00-0.50  bike rides in and brakes
-///  0.52-0.74  parcel is thrown to the doorstep
-///  0.74-0.95  confetti + "delivered" check badge
-///  0.82-1.00  bike rides off
+///  0.46-0.62  door opens, person walks out to meet the courier
+///  0.50-0.60  courier picks the parcel up and holds it out
+///  0.66-0.76  parcel is handed from courier to person
+///  0.76-0.95  confetti + "delivered" check badge
+///  0.82-1.00  bike rides off (person stays, holding the parcel)
 class _ScenePainter extends CustomPainter {
   _ScenePainter(this.t);
   final double t;
@@ -155,6 +157,10 @@ class _ScenePainter extends CustomPainter {
   double _seg(double a, double b, [Curve c = Curves.linear]) =>
       Interval(a, b, curve: c).transform(t);
 
+  /// Where the person's hand is, given their x position and grab progress.
+  Offset _personHand(double x, double grab) =>
+      Offset.lerp(Offset(x - 4, _road - 30), Offset(x - 18, _road - 44), grab)!;
+
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
@@ -163,7 +169,7 @@ class _ScenePainter extends CustomPainter {
 
     _cloud(canvas, 40 + t * 18, 48, 1);
     _cloud(canvas, 170 + t * 10, 82, .7);
-    _house(canvas);
+    _house(canvas, t >= .46);
     _ground(canvas);
 
     // Bike position & speed
@@ -195,27 +201,48 @@ class _ScenePainter extends CustomPainter {
       }
     }
 
-    _bike(canvas, bx, by);
+    // Courier stretches an arm out while handing over the parcel
+    final reach =
+        _seg(.5, .58, Curves.easeOut) * (1 - _seg(.74, .82, Curves.easeIn));
+    _bike(canvas, bx, by, reach);
 
-    // Parcel
+    // Person comes out of the door to meet the courier
+    final walk = _seg(.46, .62, Curves.easeInOut);
+    final personX = 300 - 34 * walk;
+    final grab = _seg(.62, .7, Curves.easeOut);
+    if (t >= .46) _person(canvas, personX, walk, grab);
+
+    // Parcel: on the rack -> in courier's hand -> in person's hand
+    final courierHand = Offset(
+      bx + 53 + 19 * reach,
+      by - 44 + 4 * reach,
+    );
+    final heldByCourier = courierHand + const Offset(8, -4);
+    final heldByPerson = _personHand(personX, grab) + const Offset(-8, -4);
+    final rack = Offset(bx - 12, by - 36);
+
     Offset pos;
     var ang = 0.0;
-    if (t < .52) {
-      pos = Offset(bx - 12, by - 36);
+    if (t < .5) {
+      pos = rack;
+    } else if (t < .6) {
+      final p = _seg(.5, .6, Curves.easeInOut);
+      pos = Offset.lerp(rack, heldByCourier, p)!;
+      pos = pos.translate(0, -26 * math.sin(p * math.pi));
+      ang = -.4 * math.sin(p * math.pi);
+    } else if (t < .66) {
+      pos = heldByCourier;
+    } else if (t < .76) {
+      final p = _seg(.66, .76, Curves.easeInOut);
+      pos = Offset.lerp(heldByCourier, heldByPerson, p)!;
     } else {
-      final p = _seg(.52, .74);
-      const startX = _stopX - 12, startY = _road - 18 - 36;
-      const endX = 300.0, endY = _road - 14;
-      var y = startY + (endY - startY) * p - 220 * p * (1 - p);
-      y -= 8 * math.sin(_seg(.74, .8) * math.pi);
-      pos = Offset(startX + (endX - startX) * p, y);
-      ang = -.6 * math.sin(p * math.pi);
+      pos = heldByPerson;
     }
     _parcel(canvas, pos, ang);
 
     // Confetti
-    final q = _seg(.74, .95, Curves.easeOut);
-    if (t > .74 && q < 1) {
+    final q = _seg(.76, .95, Curves.easeOut);
+    if (t > .76 && q < 1) {
       const colors = [
         AppColors.black,
         AppColors.orange,
@@ -226,7 +253,7 @@ class _ScenePainter extends CustomPainter {
         final a = i * math.pi / 4;
         final d = 10 + 40 * q;
         canvas.drawCircle(
-          Offset(300 + math.cos(a) * d, 170 + math.sin(a) * d - 10),
+          Offset(personX + math.cos(a) * d, 130 + math.sin(a) * d),
           3.5 * (1 - q),
           Paint()..color = colors[i % 4],
         );
@@ -234,7 +261,7 @@ class _ScenePainter extends CustomPainter {
     }
 
     // Delivered badge
-    final s = _seg(.76, .92, Curves.elasticOut);
+    final s = _seg(.78, .92, Curves.elasticOut);
     if (s > 0) {
       canvas.save();
       canvas.translate(300, 58);
@@ -290,7 +317,7 @@ class _ScenePainter extends CustomPainter {
     ..strokeCap = StrokeCap.round
     ..strokeJoin = StrokeJoin.round;
 
-  void _house(Canvas c) {
+  void _house(Canvas c, bool doorOpen) {
     const body = Rect.fromLTWH(255, 130, 90, 62);
     c.drawRect(body, Paint()..color = Colors.white);
     c.drawRect(body, _stroke(AppColors.black, 3));
@@ -303,15 +330,25 @@ class _ScenePainter extends CustomPainter {
     c.drawPath(roof, Paint()..color = AppColors.orange);
     c.drawPath(roof, _stroke(AppColors.black, 3));
 
+    // Windows
     for (final r in const [
-      Rect.fromLTWH(288, 150, 24, 42),
       Rect.fromLTWH(262, 142, 16, 16),
       Rect.fromLTWH(322, 142, 16, 16),
     ]) {
       c.drawRect(r, Paint()..color = AppColors.sky);
       c.drawRect(r, _stroke(AppColors.black, 2.5));
     }
-    c.drawCircle(const Offset(306, 172), 2, Paint()..color = AppColors.black);
+
+    // Door (dark opening when someone is coming out)
+    const door = Rect.fromLTWH(288, 150, 24, 42);
+    c.drawRect(
+      door,
+      Paint()..color = doorOpen ? AppColors.black : AppColors.sky,
+    );
+    c.drawRect(door, _stroke(AppColors.black, 2.5));
+    if (!doorOpen) {
+      c.drawCircle(const Offset(306, 172), 2, Paint()..color = AppColors.black);
+    }
   }
 
   void _ground(Canvas c) {
@@ -328,13 +365,44 @@ class _ScenePainter extends CustomPainter {
     c.drawCircle(o, 18, _stroke(AppColors.black, 4));
     final spoke = _stroke(Colors.black54, 1.5);
     for (var i = 0; i < 4; i++) {
-      final d = Offset(math.cos(a + i * math.pi / 4), math.sin(a + i * math.pi / 4)) * 16;
+      final d = Offset(
+          math.cos(a + i * math.pi / 4), math.sin(a + i * math.pi / 4)) *
+          16;
       c.drawLine(o - d, o + d, spoke);
     }
     c.drawCircle(o, 3, Paint()..color = AppColors.orange);
   }
 
-  void _bike(Canvas c, double bx, double by) {
+  void _person(Canvas c, double x, double walk, double grab) {
+    const g = _road;
+    final swing =
+    (walk > 0 && walk < 1) ? math.sin(walk * math.pi * 6) * 5 : 0.0;
+    final skin = Paint()..color = const Color(0xFFE8B98A);
+
+    // Legs
+    c.drawLine(Offset(x, g - 26), Offset(x - 3 + swing, g),
+        _stroke(AppColors.black, 6));
+    c.drawLine(Offset(x, g - 26), Offset(x + 3 - swing, g),
+        _stroke(AppColors.black, 6));
+
+    // Torso
+    c.drawLine(
+        Offset(x, g - 26), Offset(x, g - 50), _stroke(AppColors.sky, 14));
+
+    // Arm reaching for the parcel
+    final shoulder = Offset(x, g - 48);
+    final hand = _personHand(x, grab);
+    c.drawLine(shoulder, hand, _stroke(AppColors.sky, 6));
+    c.drawCircle(hand, 3.5, skin);
+
+    // Head + hair
+    final head = Offset(x, g - 60);
+    c.drawCircle(head, 9, skin);
+    c.drawArc(Rect.fromCircle(center: head, radius: 9), math.pi, math.pi, true,
+        Paint()..color = AppColors.black);
+  }
+
+  void _bike(Canvas c, double bx, double by, double reach) {
     c.save();
     c.translate(bx, by);
 
@@ -367,10 +435,14 @@ class _ScenePainter extends CustomPainter {
 
     // Handlebar, seat, rack
     c.drawLine(h, const Offset(52, -44), _stroke(AppColors.black, 4));
-    c.drawLine(const Offset(52, -44), const Offset(62, -44), _stroke(AppColors.black, 5));
-    c.drawLine(const Offset(8, -35), const Offset(24, -35), _stroke(AppColors.black, 6));
-    c.drawLine(const Offset(-30, -22), const Offset(10, -22), _stroke(AppColors.black, 3));
-    c.drawLine(const Offset(0, -2), const Offset(-14, -22), _stroke(AppColors.black, 3));
+    c.drawLine(const Offset(52, -44), const Offset(62, -44),
+        _stroke(AppColors.black, 5));
+    c.drawLine(const Offset(8, -35), const Offset(24, -35),
+        _stroke(AppColors.black, 6));
+    c.drawLine(const Offset(-30, -22), const Offset(10, -22),
+        _stroke(AppColors.black, 3));
+    c.drawLine(const Offset(0, -2), const Offset(-14, -22),
+        _stroke(AppColors.black, 3));
 
     // Rider: leg
     const hip = Offset(16, -36);
@@ -382,8 +454,10 @@ class _ScenePainter extends CustomPainter {
     c.drawPath(leg, _stroke(AppColors.sky, 8));
     c.drawCircle(pedal, 3.5, Paint()..color = AppColors.black);
 
-    // Torso, arm
-    const shoulder = Offset(34, -66), hand = Offset(53, -44);
+    // Torso, arm (hand stretches out when handing over the parcel)
+    const shoulder = Offset(34, -66);
+    final hand = Offset.lerp(
+        const Offset(53, -44), const Offset(72, -40), reach)!;
     c.drawLine(hip, shoulder, _stroke(AppColors.orange, 13));
     final elbow = (shoulder + hand) / 2 + const Offset(0, 5);
     final armPath = Path()
@@ -411,8 +485,10 @@ class _ScenePainter extends CustomPainter {
     final box = RRect.fromRectAndRadius(
         const Rect.fromLTWH(-16, -14, 32, 28), const Radius.circular(3));
     c.drawRRect(box, Paint()..color = AppColors.orange);
-    c.drawRect(const Rect.fromLTWH(-3, -14, 6, 28), Paint()..color = Colors.white);
-    c.drawRect(const Rect.fromLTWH(5, 3, 9, 7), Paint()..color = Colors.white);
+    c.drawRect(
+        const Rect.fromLTWH(-3, -14, 6, 28), Paint()..color = Colors.white);
+    c.drawRect(
+        const Rect.fromLTWH(5, 3, 9, 7), Paint()..color = Colors.white);
     c.drawRRect(box, _stroke(AppColors.black, 3));
     c.restore();
   }

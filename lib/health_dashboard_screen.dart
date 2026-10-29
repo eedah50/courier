@@ -1,5 +1,10 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 import 'theme.dart';
+
+const Color _kBg = Color(0xFFF6F5EF);
 
 class HealthDashboardScreen extends StatefulWidget {
   final bool isCourierMode;
@@ -26,6 +31,10 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
   final int _ridingHours = 4;
   final int _ridingMins = 20;
 
+  static const int _breakSeconds = 15 * 60;
+  int _breakSecondsLeft = _breakSeconds;
+  Timer? _breakTimer;
+
   // Customer Health & Eco State
   final int _customerSteps = 3420;
   final int _customerCalories = 160;
@@ -36,6 +45,12 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
   void initState() {
     super.initState();
     _isCourierView = widget.isCourierMode;
+  }
+
+  @override
+  void dispose() {
+    _breakTimer?.cancel();
+    super.dispose();
   }
 
   void _toast(String msg) {
@@ -50,78 +65,240 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
       );
   }
 
-  Widget _buildRoleToggle() {
+  String _n(int v) => v
+      .toString()
+      .replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+
+  String get _breakClock {
+    final m = _breakSecondsLeft ~/ 60;
+    final s = (_breakSecondsLeft % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  void _toggleBreak() {
+    setState(() => _isOnRestBreak = !_isOnRestBreak);
+
+    _breakTimer?.cancel();
+    if (_isOnRestBreak) {
+      _breakSecondsLeft = _breakSeconds;
+      _breakTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (!mounted) return;
+        if (_breakSecondsLeft > 1) {
+          setState(() => _breakSecondsLeft--);
+        } else {
+          setState(() => _breakSecondsLeft = 0);
+          t.cancel();
+          _toast('Break complete. Resume deliveries when you are ready.');
+        }
+      });
+    }
+
+    _toast(_isOnRestBreak
+        ? 'Rest break active! Take time to stretch & drink water.'
+        : 'Active riding shift resumed. Drive safely!');
+  }
+
+  void _changeWater({required bool courier, required double delta}) {
+    setState(() {
+      if (courier) {
+        _driverWaterLiters = (_driverWaterLiters + delta).clamp(0.0, 3.0);
+      } else {
+        _customerWaterLiters = (_customerWaterLiters + delta).clamp(0.0, 2.5);
+      }
+    });
+    if (delta > 0) {
+      _toast(courier
+          ? 'Logged +250ml Water! Hydration on track.'
+          : 'Logged +250ml Water intake!');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Header
+  // ---------------------------------------------------------------------------
+  Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.black.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(20),
+      width: double.infinity,
+      clipBehavior: Clip.antiAlias,
+      decoration: const BoxDecoration(
+        color: AppColors.black,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
       ),
-      child: Row(
+      child: Stack(
         children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _isCourierView = false),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: !_isCourierView ? AppColors.black : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.person_rounded,
-                      size: 18,
-                      color: !_isCourierView ? AppColors.yellow : Colors.black54,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Customer Health',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 13,
-                        color: !_isCourierView ? AppColors.yellow : Colors.black54,
-                      ),
-                    ),
+          Positioned(
+            top: -70,
+            right: -50,
+            child: Container(
+              width: 240,
+              height: 240,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppColors.lemon.withValues(alpha: 0.36),
+                    AppColors.lemon.withValues(alpha: 0),
                   ],
                 ),
               ),
             ),
           ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _isCourierView = true),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: _isCourierView ? AppColors.black : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.two_wheeler_rounded,
-                      size: 18,
-                      color: _isCourierView ? AppColors.yellow : Colors.black54,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Driver Health & Safety',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 13,
-                        color: _isCourierView ? AppColors.yellow : Colors.black54,
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: 0.10),
+                            border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.18)),
+                          ),
+                          child: const Icon(Icons.arrow_back_rounded,
+                              color: Colors.white, size: 20),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.16)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.person_rounded,
+                                color: AppColors.lemon, size: 14),
+                            const SizedBox(width: 6),
+                            Text(
+                              widget.userName,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.health_and_safety_rounded,
+                                    color: AppColors.lemon, size: 16),
+                                SizedBox(width: 6),
+                                Text(
+                                  'HEALTH DASHBOARD',
+                                  style: TextStyle(
+                                    color: AppColors.lemon,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Your Wellness',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 28,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 250),
+                              child: Text(
+                                _isCourierView
+                                    ? 'Stay safe and sharp on every delivery.'
+                                    : 'Small habits, healthier deliveries.',
+                                key: ValueKey(_isCourierView),
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Score gauge
+                      SizedBox(
+                        width: 78,
+                        height: 78,
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0, end: 0.98),
+                          duration: const Duration(milliseconds: 1200),
+                          curve: Curves.easeOutCubic,
+                          builder: (context, v, _) => Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              CustomPaint(
+                                size: const Size(78, 78),
+                                painter: _RingPainter(
+                                  value: v,
+                                  stroke: 7,
+                                  track: Colors.white.withValues(alpha: 0.12),
+                                  color: AppColors.lemon,
+                                ),
+                              ),
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '${(v * 100).round()}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900,
+                                      height: 1,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  const Text(
+                                    'SCORE',
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 8.5,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
@@ -130,240 +307,310 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
     );
   }
 
-  Widget _buildCustomerHealthDashboard() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Hero Health & Eco Banner
-        Container(
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF059669), Color(0xFF047857)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+  // ---------------------------------------------------------------------------
+  // Role toggle (sliding thumb)
+  // ---------------------------------------------------------------------------
+  Widget _buildRoleToggle() {
+    Widget item(String label, IconData icon, bool courier) {
+      final selected = _isCourierView == courier;
+      return Expanded(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _isCourierView = courier),
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    icon,
+                    key: ValueKey(selected),
+                    size: 18,
+                    color: selected ? AppColors.lemon : Colors.black45,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 250),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                    color: selected ? AppColors.lemon : Colors.black54,
+                  ),
+                  child: Text(label),
+                ),
+              ],
             ),
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF059669).withValues(alpha: 0.3),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      height: 54,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          AnimatedAlign(
+            alignment:
+            _isCourierView ? Alignment.centerRight : Alignment.centerLeft,
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+            child: FractionallySizedBox(
+              widthFactor: 0.5,
+              heightFactor: 1,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.black,
+                  borderRadius: BorderRadius.circular(26),
+                ),
               ),
+            ),
+          ),
+          Row(
+            children: [
+              item('Customer Health', Icons.person_rounded, false),
+              item('Driver Safety', Icons.two_wheeler_rounded, true),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.eco_rounded, color: Colors.white, size: 24),
-                      SizedBox(width: 8),
-                      Text(
-                        'CUSTOMER ECO-WELLNESS',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Customer view
+  // ---------------------------------------------------------------------------
+  Widget _buildCustomerHealthDashboard() {
+    return Column(
+      key: const ValueKey('customer'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FadeSlide(
+          index: 0,
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: AppColors.black,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 22,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                Positioned(
+                  right: -50,
+                  bottom: -70,
+                  child: Container(
+                    width: 210,
+                    height: 210,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Text(
-                      '🌱 Tier 1 Green Shipper',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 11,
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.lemon.withValues(alpha: 0.28),
+                          AppColors.lemon.withValues(alpha: 0),
+                        ],
                       ),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Text(
-                          '$_customerSteps Steps Walked',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Walked to local pickup hubs • $_customerCalories kcal burned',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.85),
-                            fontSize: 13,
+                        const Icon(Icons.eco_rounded,
+                            color: AppColors.lemon, size: 18),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'CUSTOMER ECO-WELLNESS',
+                            style: TextStyle(
+                              color: Colors.white60,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.3,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: const BoxDecoration(
-                      color: Colors.white24,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.directions_walk_rounded,
-                      color: Colors.white,
-                      size: 32,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 20),
-
-        // Activity Stats Row
-        Row(
-          children: [
-            Expanded(
-              child: _HealthMetricTile(
-                title: 'Carbon Saved',
-                value: '${_carbonSavedKg}kg CO₂',
-                subtitle: 'Green deliveries',
-                icon: Icons.eco_rounded,
-                color: const Color(0xFF10B981),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: _HealthMetricTile(
-                title: 'Calories Burned',
-                value: '$_customerCalories kcal',
-                subtitle: 'Walking pickups',
-                icon: Icons.local_fire_department_rounded,
-                color: Colors.deepOrange,
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 20),
-
-        // Customer Hydration Tracker
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F9FF),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: AppColors.sky.withValues(alpha: 0.4)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.sky.withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.water_drop_rounded, color: AppColors.sky, size: 28),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Daily Hydration',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
-                        color: AppColors.black,
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.lemon.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(
+                            color: AppColors.lemon.withValues(alpha: 0.5)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.workspace_premium_rounded,
+                              color: AppColors.lemon, size: 15),
+                          SizedBox(width: 6),
+                          Text(
+                            'Tier 1 Green Shipper',
+                            style: TextStyle(
+                              color: AppColors.lemon,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11.5,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${_customerWaterLiters.toStringAsFixed(1)}L / 2.0L goal',
-                      style: const TextStyle(color: Colors.black87, fontSize: 13),
+                    const SizedBox(height: 20),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _n(_customerSteps),
+                                style: const TextStyle(
+                                  color: AppColors.lemon,
+                                  fontSize: 44,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1,
+                                  letterSpacing: -1,
+                                  fontFeatures: [FontFeature.tabularFigures()],
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                'steps walked',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Walked to local pickup hubs • $_customerCalories kcal burned',
+                                style: const TextStyle(
+                                  color: Colors.white60,
+                                  fontSize: 12.5,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Container(
+                          width: 58,
+                          height: 58,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: 0.08),
+                            border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.16)),
+                          ),
+                          child: const Icon(
+                            Icons.directions_walk_rounded,
+                            color: AppColors.lemon,
+                            size: 30,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.sky,
-                  foregroundColor: AppColors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                ),
-                onPressed: () {
-                  setState(() {
-                    if (_customerWaterLiters < 2.5) {
-                      _customerWaterLiters += 0.25;
-                    }
-                  });
-                  _toast('Logged +250ml Water intake!');
-                },
-                child: const Text('+250ml', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
 
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
 
-        // Unboxing Hygiene & Package Safety Guide
-        const Text(
-          'Package Ergonomics & Hygiene Guide',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: AppColors.black),
-        ),
-        const SizedBox(height: 12),
-
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: const Column(
+        _FadeSlide(
+          index: 1,
+          child: Row(
             children: [
+              Expanded(
+                child: _MetricTile(
+                  icon: Icons.eco_rounded,
+                  value: '${_carbonSavedKg.toStringAsFixed(1)} kg',
+                  title: 'CO₂ Saved',
+                  subtitle: 'Green deliveries',
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _MetricTile(
+                  icon: Icons.local_fire_department_rounded,
+                  value: '$_customerCalories kcal',
+                  title: 'Calories Burned',
+                  subtitle: 'Walking pickups',
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        _FadeSlide(
+          index: 2,
+          child: _HydrationCard(
+            title: 'Daily Hydration',
+            liters: _customerWaterLiters,
+            goal: 2.0,
+            max: 2.5,
+            onChange: (d) => _changeWater(courier: false, delta: d),
+          ),
+        ),
+
+        const SizedBox(height: 26),
+
+        _FadeSlide(
+          index: 3,
+          child: const _GuideCard(
+            title: 'Package Ergonomics & Hygiene',
+            rows: [
               _GuideRow(
                 icon: Icons.sanitizer_rounded,
                 title: 'Parcel Hygiene Care',
-                description: 'Sanitize or wash hands thoroughly after unboxing cardboard & plastic delivery wrappers.',
+                description:
+                'Sanitize or wash hands thoroughly after unboxing cardboard & plastic delivery wrappers.',
               ),
-              Divider(height: 20),
               _GuideRow(
                 icon: Icons.fitness_center_rounded,
                 title: 'Heavy Box Lifting',
-                description: 'Bend at your knees and keep heavy parcel packages close to your chest to protect lumbar muscles.',
+                description:
+                'Bend at your knees and keep heavy parcel packages close to your chest to protect lumbar muscles.',
               ),
-              Divider(height: 20),
               _GuideRow(
                 icon: Icons.recycling_rounded,
                 title: 'Eco Recycling',
-                description: 'Recycle outer cardboard boxes at local green disposal centers.',
+                description:
+                'Recycle outer cardboard boxes at local green disposal centers.',
               ),
             ],
           ),
@@ -372,65 +619,148 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
     );
   }
 
-  Widget _buildCourierHealthDashboard() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Driver Fatigue & Shift Control
-        Container(
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            color: AppColors.black,
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.black.withValues(alpha: 0.3),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
+  // ---------------------------------------------------------------------------
+  // Courier view
+  // ---------------------------------------------------------------------------
+  Widget _buildShiftCard() {
+    final onBreak = _isOnRestBreak;
+    final ringValue = onBreak ? _breakSecondsLeft / _breakSeconds : 0.72;
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: AppColors.black,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
           ),
-          child: Column(
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -50,
+            top: -60,
+            child: Container(
+              width: 210,
+              height: 210,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppColors.lemon.withValues(alpha: 0.26),
+                    AppColors.lemon.withValues(alpha: 0),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Column(
             children: [
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: _isOnRestBreak
-                          ? AppColors.sky.withValues(alpha: 0.2)
-                          : AppColors.yellow.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _isOnRestBreak ? Icons.coffee_rounded : Icons.timer_rounded,
-                      color: _isOnRestBreak ? AppColors.sky : AppColors.yellow,
-                      size: 28,
+                  // Ring
+                  SizedBox(
+                    width: 112,
+                    height: 112,
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(end: ringValue),
+                      duration: const Duration(milliseconds: 500),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, v, _) => Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CustomPaint(
+                            size: const Size(112, 112),
+                            painter: _RingPainter(
+                              value: v,
+                              stroke: 9,
+                              track: Colors.white.withValues(alpha: 0.12),
+                              color: AppColors.lemon,
+                            ),
+                          ),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                onBreak
+                                    ? _breakClock
+                                    : '${_ridingHours}h ${_ridingMins}m',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 21,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1,
+                                  fontFeatures: [FontFeature.tabularFigures()],
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                onBreak ? 'BREAK LEFT' : 'ACTIVE TODAY',
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 18),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          _isOnRestBreak ? 'REST BREAK ACTIVE' : 'RIDING SHIFT TIME',
-                          style: TextStyle(
-                            color: _isOnRestBreak ? AppColors.sky : AppColors.yellow,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.2,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: AppColors.lemon.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                                color: AppColors.lemon.withValues(alpha: 0.45)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                onBreak
+                                    ? Icons.coffee_rounded
+                                    : Icons.timer_rounded,
+                                color: AppColors.lemon,
+                                size: 13,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                onBreak ? 'REST BREAK' : 'ON SHIFT',
+                                style: const TextStyle(
+                                  color: AppColors.lemon,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 10),
                         Text(
-                          _isOnRestBreak
+                          onBreak
                               ? 'Orders paused. Rest for 15 minutes to recharge.'
                               : '$_ridingHours hrs $_ridingMins mins active today',
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 15,
+                            fontSize: 14.5,
                             fontWeight: FontWeight.w800,
+                            height: 1.3,
                           ),
                         ),
                       ],
@@ -438,172 +768,114 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: LinearProgressIndicator(
-                  value: _isOnRestBreak ? 1.0 : 0.72,
-                  minHeight: 8,
-                  backgroundColor: Colors.white12,
-                  color: _isOnRestBreak ? AppColors.sky : AppColors.orange,
-                ),
-              ),
-              const SizedBox(height: 18),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isOnRestBreak
-                      ? const Color(0xFF10B981)
-                      : AppColors.orange,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                onPressed: () {
-                  setState(() => _isOnRestBreak = !_isOnRestBreak);
-                  _toast(_isOnRestBreak
-                      ? 'Rest break active! Take time to stretch & drink water.'
-                      : 'Active riding shift resumed. Drive safely!');
-                },
-                icon: Icon(_isOnRestBreak ? Icons.play_arrow_rounded : Icons.pause_circle_filled_rounded),
-                label: Text(
-                  _isOnRestBreak ? 'RESUME DELIVERIES' : 'TAKE A 15-MIN REST BREAK',
-                  style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.lemon,
+                    foregroundColor: AppColors.black,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: _toggleBreak,
+                  icon: Icon(
+                    onBreak
+                        ? Icons.play_arrow_rounded
+                        : Icons.pause_circle_filled_rounded,
+                  ),
+                  label: Text(
+                    onBreak ? 'RESUME DELIVERIES' : 'TAKE A 15-MIN REST BREAK',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.6,
+                      fontSize: 13.5,
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-        ),
+        ],
+      ),
+    );
+  }
 
-        const SizedBox(height: 20),
+  Widget _buildCourierHealthDashboard() {
+    return Column(
+      key: const ValueKey('courier'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FadeSlide(index: 0, child: _buildShiftCard()),
 
-        // Activity Stats Row (Steps, Calories)
-        Row(
-          children: [
-            Expanded(
-              child: _HealthMetricTile(
-                title: 'Parcel Handling Steps',
-                value: '$_driverSteps',
-                subtitle: 'Goal: 10,000 steps',
-                icon: Icons.directions_walk_rounded,
-                color: AppColors.orange,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: _HealthMetricTile(
-                title: 'Active Calories',
-                value: '$_driverCalories kcal',
-                subtitle: 'Parcel loading burn',
-                icon: Icons.local_fire_department_rounded,
-                color: Colors.deepOrange,
-              ),
-            ),
-          ],
-        ),
+        const SizedBox(height: 16),
 
-        const SizedBox(height: 20),
-
-        // Driver Hydration Control
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F9FF),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: AppColors.sky.withValues(alpha: 0.4)),
-          ),
+        _FadeSlide(
+          index: 1,
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.sky.withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.water_drop_rounded, color: AppColors.sky, size: 28),
-              ),
-              const SizedBox(width: 16),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Shift Hydration Target',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
-                        color: AppColors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${_driverWaterLiters.toStringAsFixed(1)}L / 2.5L goal',
-                      style: const TextStyle(color: Colors.black87, fontSize: 13),
-                    ),
-                  ],
+                child: _MetricTile(
+                  icon: Icons.directions_walk_rounded,
+                  value: _n(_driverSteps),
+                  title: 'Parcel Handling Steps',
+                  subtitle: 'Goal: 10,000 steps',
+                  progress: _driverSteps / 10000,
                 ),
               ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.sky,
-                  foregroundColor: AppColors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _MetricTile(
+                  icon: Icons.local_fire_department_rounded,
+                  value: '$_driverCalories kcal',
+                  title: 'Active Calories',
+                  subtitle: 'Parcel loading burn',
                 ),
-                onPressed: () {
-                  setState(() {
-                    if (_driverWaterLiters < 2.8) {
-                      _driverWaterLiters += 0.25;
-                    }
-                  });
-                  _toast('Logged +250ml Water! Hydration on track.');
-                },
-                child: const Text('+250ml', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
               ),
             ],
           ),
         ),
 
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
 
-        // Heavy Package Lifting Posture Guide
-        const Text(
-          'Driver Posture & Heavy Parcel Ergonomics',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: AppColors.black),
-        ),
-        const SizedBox(height: 12),
-
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+        _FadeSlide(
+          index: 2,
+          child: _HydrationCard(
+            title: 'Shift Hydration Target',
+            liters: _driverWaterLiters,
+            goal: 2.5,
+            max: 3.0,
+            onChange: (d) => _changeWater(courier: true, delta: d),
           ),
-          child: const Column(
-            children: [
+        ),
+
+        const SizedBox(height: 26),
+
+        _FadeSlide(
+          index: 3,
+          child: const _GuideCard(
+            title: 'Driver Posture & Parcel Ergonomics',
+            rows: [
               _GuideRow(
                 icon: Icons.accessibility_new_rounded,
                 title: 'Squat & Bend Knees',
-                description: 'Squat down when lifting heavy boxes from ground level to avoid lower back strain.',
+                description:
+                'Squat down when lifting heavy boxes from ground level to avoid lower back strain.',
               ),
-              Divider(height: 20),
               _GuideRow(
                 icon: Icons.center_focus_strong_rounded,
                 title: 'Keep Load Close to Spine',
-                description: 'Hold heavy parcels close to your body chest to minimize spinal disc pressure by 60%.',
+                description:
+                'Hold heavy parcels close to your chest to reduce pressure on your spinal discs.',
               ),
-              Divider(height: 20),
               _GuideRow(
                 icon: Icons.fitness_center_rounded,
                 title: 'Max Weight Limit: 25 kg',
-                description: 'Request a trolley or co-courier assistance for packages exceeding 25 kg.',
+                description:
+                'Request a trolley or co-courier assistance for packages exceeding 25 kg.',
               ),
             ],
           ),
@@ -615,138 +887,418 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        backgroundColor: AppColors.black,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: const BoxDecoration(
-                color: AppColors.orange,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.health_and_safety_rounded, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'HEALTH DASHBOARD',
-              style: TextStyle(
-                color: AppColors.yellow,
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.2,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFF10B981).withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Row(
+      backgroundColor: _kBg,
+      body: Column(
+        children: [
+          _buildHeader(),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
               children: [
-                Icon(Icons.favorite_rounded, color: Color(0xFF10B981), size: 16),
-                SizedBox(width: 4),
-                Text(
-                  'Score 98/100',
-                  style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w900, fontSize: 11),
+                _buildRoleToggle(),
+                const SizedBox(height: 20),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: _isCourierView
+                      ? _buildCourierHealthDashboard()
+                      : _buildCustomerHealthDashboard(),
                 ),
               ],
             ),
           ),
         ],
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              _buildRoleToggle(),
-              const SizedBox(height: 20),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: _isCourierView ? _buildCourierHealthDashboard() : _buildCustomerHealthDashboard(),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
 
-class _HealthMetricTile extends StatelessWidget {
-  final String title;
-  final String value;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
+// -----------------------------------------------------------------------------
+// Staggered entrance
+// -----------------------------------------------------------------------------
+class _FadeSlide extends StatelessWidget {
+  final int index;
+  final Widget child;
 
-  const _HealthMetricTile({
-    required this.title,
-    required this.value,
-    required this.subtitle,
+  const _FadeSlide({required this.index, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 420 + index * 110),
+      curve: Curves.easeOutCubic,
+      builder: (context, v, child) => Opacity(
+        opacity: v,
+        child: Transform.translate(
+          offset: Offset(0, 20 * (1 - v)),
+          child: child,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Metric tile
+// -----------------------------------------------------------------------------
+class _MetricTile extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String title;
+  final String subtitle;
+  final double? progress;
+
+  const _MetricTile({
     required this.icon,
-    required this.color,
+    required this.value,
+    required this.title,
+    required this.subtitle,
+    this.progress,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 26),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: AppColors.black,
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.lemon,
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(icon, color: AppColors.black, size: 22),
+          ),
+          const SizedBox(height: 14),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: AppColors.black,
+                letterSpacing: -0.4,
+              ),
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Text(
             title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.black),
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: AppColors.black,
+            ),
           ),
           const SizedBox(height: 2),
           Text(
             subtitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 10, color: Colors.black54),
+            style: const TextStyle(fontSize: 11, color: Colors.black54),
+          ),
+          if (progress != null) ...[
+            const SizedBox(height: 12),
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: progress!.clamp(0.0, 1.0)),
+              duration: const Duration(milliseconds: 900),
+              curve: Curves.easeOutCubic,
+              builder: (context, v, _) => ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Stack(
+                  children: [
+                    Container(
+                      height: 6,
+                      color: Colors.black.withValues(alpha: 0.08),
+                    ),
+                    FractionallySizedBox(
+                      widthFactor: v,
+                      child: Container(
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: AppColors.black,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Hydration tracker with segmented bar (250ml per segment)
+// -----------------------------------------------------------------------------
+class _HydrationCard extends StatelessWidget {
+  final String title;
+  final double liters;
+  final double goal;
+  final double max;
+  final void Function(double delta) onChange;
+
+  const _HydrationCard({
+    required this.title,
+    required this.liters,
+    required this.goal,
+    required this.max,
+    required this.onChange,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final segments = (goal / 0.25).round();
+    final filled = (liters / 0.25).floor();
+    final percent = ((liters / goal) * 100).round().clamp(0, 100);
+    final reached = liters >= goal;
+    final atMax = liters >= max;
+    final atZero = liters <= 0;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: AppColors.black,
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(Icons.water_drop_rounded,
+                    color: AppColors.lemon, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 15.5,
+                        color: AppColors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${liters.toStringAsFixed(1)}L / ${goal.toStringAsFixed(1)}L goal',
+                      style: const TextStyle(
+                          color: Colors.black54, fontSize: 12.5),
+                    ),
+                  ],
+                ),
+              ),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                decoration: BoxDecoration(
+                  color: reached ? AppColors.lemon : const Color(0xFFF6F5EF),
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (reached) ...[
+                      const Icon(Icons.check_rounded,
+                          size: 14, color: AppColors.black),
+                      const SizedBox(width: 3),
+                    ],
+                    Text(
+                      '$percent%',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                        color: AppColors.black,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+
+          // Segmented bar
+          Row(
+            children: [
+              for (var i = 0; i < segments; i++) ...[
+                if (i > 0) const SizedBox(width: 4),
+                Expanded(
+                  child: AnimatedContainer(
+                    duration: Duration(milliseconds: 250 + i * 25),
+                    curve: Curves.easeOut,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: i < filled
+                          ? AppColors.lemon
+                          : Colors.black.withValues(alpha: 0.07),
+                      borderRadius: BorderRadius.circular(6),
+                      border: i < filled
+                          ? Border.all(
+                          color: AppColors.black.withValues(alpha: 0.12))
+                          : null,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              // Undo
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    side: BorderSide(
+                      color: Colors.black.withValues(alpha: 0.12),
+                    ),
+                  ),
+                  onPressed: atZero ? null : () => onChange(-0.25),
+                  child: const Icon(Icons.remove_rounded,
+                      color: AppColors.black, size: 22),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.black,
+                      foregroundColor: AppColors.lemon,
+                      disabledBackgroundColor: Colors.black12,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: atMax ? null : () => onChange(0.25),
+                    icon: const Icon(Icons.add_rounded, size: 20),
+                    label: const Text(
+                      '+250ml',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Guide card
+// -----------------------------------------------------------------------------
+class _GuideCard extends StatelessWidget {
+  final String title;
+  final List<_GuideRow> rows;
+
+  const _GuideCard({required this.title, required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 12),
+          child: Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.5,
+              color: Colors.black45,
+            ),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < rows.length; i++) ...[
+                if (i > 0)
+                  Divider(
+                    height: 1,
+                    color: Colors.black.withValues(alpha: 0.07),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: rows[i],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -768,12 +1320,13 @@ class _GuideRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          padding: const EdgeInsets.all(8),
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
-            color: AppColors.orange.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(10),
+            color: AppColors.lemon.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(13),
           ),
-          child: Icon(icon, color: AppColors.orange, size: 20),
+          child: Icon(icon, color: AppColors.black, size: 21),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -782,12 +1335,20 @@ class _GuideRow extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppColors.black),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                  color: AppColors.black,
+                ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(
                 description,
-                style: const TextStyle(fontSize: 12, color: Colors.black87, height: 1.3),
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: Colors.black54,
+                  height: 1.45,
+                ),
               ),
             ],
           ),
@@ -795,4 +1356,56 @@ class _GuideRow extends StatelessWidget {
       ],
     );
   }
+}
+
+// -----------------------------------------------------------------------------
+// Progress ring
+// -----------------------------------------------------------------------------
+class _RingPainter extends CustomPainter {
+  final double value; // 0..1
+  final double stroke;
+  final Color track;
+  final Color color;
+
+  _RingPainter({
+    required this.value,
+    required this.stroke,
+    required this.track,
+    required this.color,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = (Offset.zero & size).deflate(stroke / 2);
+
+    canvas.drawArc(
+      rect,
+      0,
+      math.pi * 2,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..color = track,
+    );
+
+    canvas.drawArc(
+      rect,
+      -math.pi / 2,
+      math.pi * 2 * value.clamp(0.0, 1.0),
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.round
+        ..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingPainter old) =>
+      old.value != value ||
+          old.stroke != stroke ||
+          old.track != track ||
+          old.color != color;
 }
